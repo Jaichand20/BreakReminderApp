@@ -1,0 +1,23 @@
+name: squat_reminder
+description: A tiny, lightweight app that reminds you to do squats every hour.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_local_notifications: ^17.2.3
+  sqlite3: ^2.4.6
+  sqlite3_flutter_libs: ^0.5.24
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
