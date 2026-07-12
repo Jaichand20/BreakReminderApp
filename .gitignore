@@ -1,0 +1,28 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.lock
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/*.iml
+android/*.iml
+android/gradle.properties.local
+android/captures/
+android/gradlew
+android/gradlew.bat
+**/GeneratedPluginRegistrant.*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# App data (personal break history, shouldn't be committed)
+*.db
