@@ -213,12 +213,12 @@ class _BreakInProgressBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.accent.withOpacity(0.14),
+          color: AppColors.accent.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.accent.withOpacity(0.45)),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.45)),
         ),
-        child: Row(
-          children: const [
+        child: const Row(
+          children: [
             Icon(Icons.timer_outlined, size: 18, color: AppColors.accentLight),
             SizedBox(width: 10),
             Expanded(

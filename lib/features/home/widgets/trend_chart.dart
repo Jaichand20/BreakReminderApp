@@ -336,9 +336,9 @@ class _TrendPainter extends CustomPainter {
         final paint = Paint()
           ..color = isHighlight
               ? AppColors.accentLight
-              : Colors.white.withOpacity(0.18);
+              : Colors.white.withValues(alpha: 0.18);
         if (isHighlight) {
-          final shader = LinearGradient(
+          final shader = const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [AppColors.accentLight, AppColors.accent],
@@ -372,8 +372,8 @@ class _TrendPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          AppColors.accent.withOpacity(0.35),
-          AppColors.accent.withOpacity(0),
+          AppColors.accent.withValues(alpha: 0.35),
+          AppColors.accent.withValues(alpha: 0),
         ],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawPath(areaPath, areaPaint);
@@ -394,7 +394,7 @@ class _TrendPainter extends CustomPainter {
         isLast ? 4.5 : 2.4,
         Paint()
           ..color = (isLast ? AppColors.accentLight : AppColors.inkSecondary)
-              .withOpacity(isLast ? 1 : 0.55),
+              .withValues(alpha: isLast ? 1 : 0.55),
       );
     }
 

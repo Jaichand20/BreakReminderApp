@@ -44,6 +44,13 @@ String _isoDate(DateTime d) =>
 
 String isoTimestamp(DateTime d) => d.toIso8601String().substring(0, 19);
 
+/// Calendar-based day arithmetic. `add(Duration(days: n))` on a local
+/// DateTime shifts by exactly n*24h, which lands on the wrong calendar day
+/// around DST transitions; the constructor normalizes out-of-range days
+/// without involving wall-clock time.
+DateTime _daysFrom(DateTime d, int days) =>
+    DateTime(d.year, d.month, d.day + days);
+
 /// All aggregates count completed breaks only; skips are logged for the
 /// record but never shown in stats. Every date bucket is a half-open range
 /// `[start, end)` on the first 10 characters of the ISO start timestamp,
@@ -60,7 +67,7 @@ class BreakRepository {
   void logBreak(DateTime start, DateTime end) {
     final seconds = end.difference(start).inSeconds;
     _db.execute(
-      "INSERT INTO breaks (start_ts, end_ts, duration_seconds, status) "
+      'INSERT INTO breaks (start_ts, end_ts, duration_seconds, status) '
       "VALUES (?, ?, ?, 'completed')",
       [isoTimestamp(start), isoTimestamp(end), seconds < 0 ? 0 : seconds],
     );
@@ -68,7 +75,7 @@ class BreakRepository {
 
   void logSkip([DateTime? at]) {
     _db.execute(
-      "INSERT INTO breaks (start_ts, end_ts, duration_seconds, status) "
+      'INSERT INTO breaks (start_ts, end_ts, duration_seconds, status) '
       "VALUES (?, NULL, 0, 'skipped')",
       [isoTimestamp(at ?? DateTime.now())],
     );
@@ -87,14 +94,14 @@ class BreakRepository {
       ''',
       [startDate, endDate],
     ).first;
-    return [row[0] as int, row[1] as int];
+    return [row.columnAt(0) as int, row.columnAt(1) as int];
   }
 
   BreakStats stats() {
     final today = DateTime.now();
-    final tomorrow = _isoDate(today.add(const Duration(days: 1)));
-    final weekStart = _isoDate(today.subtract(const Duration(days: 6)));
-    final monthStart = _isoDate(today.subtract(const Duration(days: 29)));
+    final tomorrow = _isoDate(_daysFrom(today, 1));
+    final weekStart = _isoDate(_daysFrom(today, -6));
+    final monthStart = _isoDate(_daysFrom(today, -29));
 
     final todayRes = _countAndSecondsBetween(_isoDate(today), tomorrow);
     final weekRes = _countAndSecondsBetween(weekStart, tomorrow);
@@ -109,8 +116,8 @@ class BreakRepository {
       todayMinutes: _toMinutes(todayRes[1]),
       weekMinutes: _toMinutes(weekRes[1]),
       monthMinutes: _toMinutes(monthRes[1]),
-      allTimeCount: allRow[0] as int,
-      allTimeMinutes: _toMinutes(allRow[1] as int),
+      allTimeCount: allRow.columnAt(0) as int,
+      allTimeMinutes: _toMinutes(allRow.columnAt(1) as int),
     );
   }
 
@@ -128,7 +135,8 @@ class BreakRepository {
       [startDate, endDate],
     );
     return {
-      for (final r in rows) r[0] as String: _toMinutes(r[1] as int),
+      for (final r in rows)
+        r.columnAt(0) as String: _toMinutes(r.columnAt(1) as int),
     };
   }
 
@@ -145,8 +153,8 @@ class BreakRepository {
     );
     final totals = List<int>.filled(12, 0);
     for (final r in rows) {
-      final m = int.parse(r[0] as String);
-      totals[m - 1] = _toMinutes(r[1] as int);
+      final m = int.parse(r.columnAt(0) as String);
+      totals[m - 1] = _toMinutes(r.columnAt(1) as int);
     }
     return totals;
   }
@@ -160,19 +168,19 @@ class BreakRepository {
   int currentStreak() {
     final rows = _db.select(
         "SELECT DISTINCT substr(start_ts, 1, 10) FROM breaks WHERE status = 'completed'");
-    final activeDays = {for (final r in rows) r[0] as String};
+    final activeDays = {for (final r in rows) r.columnAt(0) as String};
     if (activeDays.isEmpty) return 0;
 
     final today = DateTime.now();
     var cursor = activeDays.contains(_isoDate(today))
         ? today
-        : today.subtract(const Duration(days: 1));
+        : _daysFrom(today, -1);
     if (!activeDays.contains(_isoDate(cursor))) return 0;
 
     var streak = 0;
     while (activeDays.contains(_isoDate(cursor))) {
       streak += 1;
-      cursor = cursor.subtract(const Duration(days: 1));
+      cursor = _daysFrom(cursor, -1);
     }
     return streak;
   }
@@ -185,6 +193,8 @@ class BreakRepository {
     ''');
     if (rows.isEmpty) return null;
     final row = rows.first;
-    return BestDay(date: row[0] as String, minutes: _toMinutes(row[1] as int));
+    return BestDay(
+        date: row.columnAt(0) as String,
+        minutes: _toMinutes(row.columnAt(1) as int));
   }
 }

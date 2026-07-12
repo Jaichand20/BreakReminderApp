@@ -22,7 +22,9 @@ Database openBreaksDatabase() {
   Directory(_breaksDbDir).createSync(recursive: true);
   final db = sqlite3.open(breaksDbPath);
   // Both isolates may touch the file around the same time (e.g. a reminder
-  // fires while the app happens to be open); avoid SQLITE_BUSY errors.
+  // fires while the app happens to be open); WAL lets a reader and a writer
+  // proceed concurrently, and the busy timeout covers writer-vs-writer.
+  db.execute('PRAGMA journal_mode = WAL;');
   db.execute('PRAGMA busy_timeout = 3000;');
   db.execute('''
     CREATE TABLE IF NOT EXISTS breaks (

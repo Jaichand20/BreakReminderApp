@@ -140,7 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       label: _paused ? 'Reminders paused' : 'Reminders active',
                       trailing: Switch(
                         value: !_paused,
-                        activeColor: AppColors.accent,
+                        activeThumbColor: AppColors.accent,
                         onChanged: (v) => _togglePaused(!v),
                       ),
                     ),

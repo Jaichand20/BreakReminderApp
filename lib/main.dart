@@ -10,21 +10,27 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final notifications = NotificationService();
-  await notifications.init();
-
   final settings = SettingsRepository();
-  final paused = await settings.isPaused();
-  if (!paused) {
-    // Top the chain up only when it's running low — rescheduling on every
-    // launch would re-anchor the cadence each time the app is opened.
-    final pending = await notifications.pendingChainCount();
-    if (pending < 8) {
-      await notifications.rescheduleChain(
-          await settings.schedule(), DateTime.now());
-    }
-  }
+  var openBreakOnLaunch = false;
 
-  final openBreakOnLaunch = await notifications.launchedByStartBreak();
+  // A notification-plugin failure (e.g. permission revoked, OEM quirk) must
+  // not prevent the app itself from launching — stats and settings still work.
+  try {
+    await notifications.init();
+    final paused = await settings.isPaused();
+    if (!paused) {
+      // Top the chain up only when it's running low — rescheduling on every
+      // launch would re-anchor the cadence each time the app is opened.
+      final pending = await notifications.pendingChainCount();
+      if (pending < 8) {
+        await notifications.rescheduleChain(
+            await settings.schedule(), DateTime.now());
+      }
+    }
+    openBreakOnLaunch = await notifications.launchedByStartBreak();
+  } catch (e, st) {
+    debugPrint('break_reminder: notification setup failed: $e\n$st');
+  }
   final repository = BreakRepository.open();
 
   runApp(BreakReminderApp(

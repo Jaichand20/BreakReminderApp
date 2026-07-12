@@ -113,6 +113,8 @@ class NotificationService {
         _details(),
         payload: 'reminder',
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
       );
     }
   }
@@ -155,10 +157,15 @@ class NotificationService {
 @pragma('vm:entry-point')
 void onBackgroundNotificationResponse(NotificationResponse response) {
   if (response.actionId != actionSkip) return;
-  final repo = BreakRepository.open();
+  // An uncaught throw here kills the whole headless isolate — never let a
+  // DB error escape.
+  BreakRepository? repo;
   try {
+    repo = BreakRepository.open();
     repo.logSkip();
+  } catch (e, st) {
+    debugPrint('break_reminder: failed to log skip: $e\n$st');
   } finally {
-    repo.close();
+    repo?.close();
   }
 }
