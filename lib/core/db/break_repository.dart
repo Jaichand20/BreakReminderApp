@@ -81,6 +81,17 @@ class BreakRepository {
     );
   }
 
+  /// When the most recent skip was logged, or null if none ever was. Skips
+  /// are written by the headless notification isolate, which can't touch the
+  /// scheduled chain — the UI isolate reads this to re-anchor the cycle.
+  DateTime? lastSkipTime() {
+    final rows = _db.select(
+        "SELECT start_ts FROM breaks WHERE status = 'skipped' "
+        'ORDER BY start_ts DESC LIMIT 1');
+    if (rows.isEmpty) return null;
+    return DateTime.tryParse(rows.first.columnAt(0) as String);
+  }
+
   static int _toMinutes(int seconds) => (seconds / 60).round();
 
   /// `[count, seconds]` of completed breaks whose start date is in

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/db/break_repository.dart';
 import '../../core/notifications/notification_service.dart';
@@ -31,6 +32,11 @@ class _BreakScreenState extends State<BreakScreen> {
   @override
   void initState() {
     super.initState();
+    // Keep the display awake while the break stopwatch is on screen; the
+    // lock is released in dispose (End break, or leaving the screen).
+    WakelockPlus.enable().catchError((Object e) {
+      debugPrint('break_reminder: wakelock enable failed: $e');
+    });
     _init();
   }
 
@@ -49,6 +55,9 @@ class _BreakScreenState extends State<BreakScreen> {
 
   @override
   void dispose() {
+    WakelockPlus.disable().catchError((Object e) {
+      debugPrint('break_reminder: wakelock disable failed: $e');
+    });
     _ticker?.cancel();
     super.dispose();
   }
@@ -72,12 +81,9 @@ class _BreakScreenState extends State<BreakScreen> {
     final end = DateTime.now();
     widget.repository.logBreak(start, end);
     await widget.settings.setActiveBreakStart(null);
-    if (!await widget.settings.isPaused()) {
-      // Re-anchor the cycle: the next reminder lands one interval after the
-      // break ended.
-      await widget.notifications
-          .rescheduleChain(await widget.settings.schedule(), end);
-    }
+    // Re-anchor the cycle: the next reminder lands exactly one interval
+    // after the break ended. (No-op while paused.)
+    await widget.notifications.restartCycle(widget.settings, end);
     if (!mounted) return;
     Navigator.pop(context);
   }

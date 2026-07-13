@@ -12,6 +12,7 @@ class SettingsRepository {
   static const _kStartMinutes = 'window_start_minutes';
   static const _kEndMinutes = 'window_end_minutes';
   static const _kActiveBreakStart = 'active_break_start';
+  static const _kLastAnchor = 'last_anchor';
 
   static const int defaultIntervalMinutes = 60;
   // Mon-Fri, 9:00-18:00 by default.
@@ -100,5 +101,21 @@ class SettingsRepository {
     } else {
       await prefs.setString(_kActiveBreakStart, start.toIso8601String());
     }
+  }
+
+  /// The instant the reminder cycle was last anchored at (Start work, break
+  /// end, or a reconciled skip) — the next break is one interval after this.
+  /// Null until the user starts work for the first time; no reminders are
+  /// scheduled before then.
+  Future<DateTime?> lastAnchor() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_kLastAnchor);
+    if (stored == null) return null;
+    return DateTime.tryParse(stored);
+  }
+
+  Future<void> setLastAnchor(DateTime anchor) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastAnchor, anchor.toIso8601String());
   }
 }

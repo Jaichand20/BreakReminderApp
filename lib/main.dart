@@ -11,27 +11,20 @@ Future<void> main() async {
 
   final notifications = NotificationService();
   final settings = SettingsRepository();
+  final repository = BreakRepository.open();
   var openBreakOnLaunch = false;
 
   // A notification-plugin failure (e.g. permission revoked, OEM quirk) must
   // not prevent the app itself from launching — stats and settings still work.
   try {
     await notifications.init();
-    final paused = await settings.isPaused();
-    if (!paused) {
-      // Top the chain up only when it's running low — rescheduling on every
-      // launch would re-anchor the cadence each time the app is opened.
-      final pending = await notifications.pendingChainCount();
-      if (pending < 8) {
-        await notifications.rescheduleChain(
-            await settings.schedule(), DateTime.now());
-      }
-    }
-    openBreakOnLaunch = await notifications.launchedByStartBreak();
+    // Re-anchor after any Skip logged while the app wasn't running, and top
+    // the chain up if it's running low.
+    await notifications.syncSchedule(repository, settings);
+    openBreakOnLaunch = await notifications.launchedByTakeBreak();
   } catch (e, st) {
     debugPrint('break_reminder: notification setup failed: $e\n$st');
   }
-  final repository = BreakRepository.open();
 
   runApp(BreakReminderApp(
     repository: repository,

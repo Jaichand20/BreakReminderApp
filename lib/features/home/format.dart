@@ -6,3 +6,11 @@ String formatMinutes(int minutes) {
   final m = minutes % 60;
   return '${h}h ${m.toString().padLeft(2, '0')}m';
 }
+
+/// Formats an instant as a 12-hour wall-clock time, e.g. "2:35 PM".
+String formatClock(DateTime t) {
+  final period = t.hour < 12 ? 'AM' : 'PM';
+  var hour12 = t.hour % 12;
+  if (hour12 == 0) hour12 = 12;
+  return '$hour12:${t.minute.toString().padLeft(2, '0')} $period';
+}

@@ -14,6 +14,7 @@ dependencies:
   sqlite3_flutter_libs: ^0.5.24
   shared_preferences: ^2.3.2
   timezone: ^0.9.4
+  wakelock_plus: ^1.6.1
 
 dev_dependencies:
   flutter_test:

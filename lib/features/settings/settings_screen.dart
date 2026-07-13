@@ -53,11 +53,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _applySchedule() async {
-    if (_paused) {
+    final anchor = await widget.settings.lastAnchor();
+    if (_paused || anchor == null) {
+      // Paused, or work has never been started — nothing should be pending.
       await widget.notifications.cancelChain();
     } else {
-      await widget.notifications
-          .rescheduleChain(await widget.settings.schedule(), DateTime.now());
+      // Setting changes take effect immediately: re-anchor the cycle at now.
+      await widget.notifications.restartCycle(widget.settings, DateTime.now());
     }
   }
 

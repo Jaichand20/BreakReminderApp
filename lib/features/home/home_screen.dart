@@ -33,17 +33,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _refreshTick = 0;
   bool _breakScreenOpen = false;
   bool _breakInProgress = false;
+  bool _startingWork = false;
+  DateTime? _nextBreakAt;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    widget.notifications.startBreakRequests.addListener(_onStartBreakRequest);
+    widget.notifications.takeBreakRequests.addListener(_onTakeBreakRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _refreshNextBreak();
       final activeStart = await widget.settings.activeBreakStart();
       if (!mounted) return;
       if (widget.openBreakOnLaunch || activeStart != null) {
-        // Either the app was launched from a reminder's "Start break"
+        // Either the app was launched from a reminder's "Take break"
         // action, or a break was in progress when the app was killed.
         await _openBreakScreen();
       }
@@ -52,8 +55,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    widget.notifications.startBreakRequests
-        .removeListener(_onStartBreakRequest);
+    widget.notifications.takeBreakRequests
+        .removeListener(_onTakeBreakRequest);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -61,21 +64,89 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Skips logged from a notification action while the app was
-    // backgrounded need to show up when the user comes back.
+    // backgrounded need to show up (and re-anchor the cycle) when the user
+    // comes back.
     if (state == AppLifecycleState.resumed) {
       setState(() => _refreshTick++);
-      _checkActiveBreak();
+      _syncAndRefresh();
     }
   }
 
-  void _onStartBreakRequest() {
+  Future<void> _syncAndRefresh() async {
+    try {
+      await widget.notifications
+          .syncSchedule(widget.repository, widget.settings);
+    } catch (e, st) {
+      debugPrint('break_reminder: schedule sync failed: $e\n$st');
+    }
+    await _checkActiveBreak();
+    await _refreshNextBreak();
+  }
+
+  void _onTakeBreakRequest() {
     _openBreakScreen();
+  }
+
+  /// Anchors the hourly cycle at now: the first break reminder buzzes one
+  /// interval after this press.
+  Future<void> _startWork() async {
+    if (_startingWork) return;
+    setState(() => _startingWork = true);
+    try {
+      // Starting work is an explicit "I want reminders" — it overrides pause.
+      if (await widget.settings.isPaused()) {
+        await widget.settings.setPaused(false);
+      }
+      await widget.notifications
+          .restartCycle(widget.settings, DateTime.now());
+      await _refreshNextBreak();
+      if (!mounted) return;
+      final next = _nextBreakAt;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(next == null
+            ? 'Work started.'
+            : 'Work started — break reminder at ${formatClock(next)}.'),
+      ));
+    } finally {
+      if (mounted) setState(() => _startingWork = false);
+    }
+  }
+
+  /// The next chain occurrence that is still in the future, for display.
+  Future<void> _refreshNextBreak() async {
+    DateTime? next;
+    if (!await widget.settings.isPaused()) {
+      final anchor = await widget.settings.lastAnchor();
+      if (anchor != null) {
+        final schedule = await widget.settings.schedule();
+        final now = DateTime.now();
+        for (final t in schedule.nextOccurrences(anchor)) {
+          if (t.isAfter(now)) {
+            next = t;
+            break;
+          }
+        }
+      }
+    }
+    if (!mounted) return;
+    if (next != _nextBreakAt) setState(() => _nextBreakAt = next);
   }
 
   Future<void> _openBreakScreen() async {
     if (_breakScreenOpen || !mounted) return;
     _breakScreenOpen = true;
     setState(() => _breakInProgress = false);
+    try {
+      // Stop a buzzing reminder and silence the chain for the duration of
+      // the break; End break reschedules it.
+      await widget.notifications.cancelAllReminders();
+    } catch (e, st) {
+      debugPrint('break_reminder: failed to cancel reminders: $e\n$st');
+    }
+    if (!mounted) {
+      _breakScreenOpen = false;
+      return;
+    }
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => BreakScreen(
         repository: widget.repository,
@@ -87,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _refreshTick++);
     await _checkActiveBreak();
+    await _refreshNextBreak();
   }
 
   /// A break can still be "in progress" while the user is on the home
@@ -103,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _onRefresh() async {
     setState(() => _refreshTick++);
     await _checkActiveBreak();
+    await _refreshNextBreak();
   }
 
   @override
@@ -122,7 +195,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   settings: widget.settings,
                 ),
               ));
+              if (!mounted) return;
               setState(() => _refreshTick++);
+              await _refreshNextBreak();
             },
           ),
         ],
@@ -142,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               width: double.infinity,
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: _openBreakScreen,
+                onPressed: _startingWork ? null : _startWork,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.accent,
                   foregroundColor: Colors.white,
@@ -151,15 +226,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                icon: const Icon(Icons.self_improvement, size: 22),
+                icon: const Icon(Icons.play_arrow_rounded, size: 24),
                 label: const Text(
-                  'Start break',
+                  'Start work',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.2,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                _nextBreakAt != null
+                    ? 'Next break at ${formatClock(_nextBreakAt!)}'
+                    : 'Press Start work to begin the hourly break cycle.',
+                style: const TextStyle(
+                    fontSize: 12.5, color: AppColors.inkSecondary),
               ),
             ),
             const SizedBox(height: 14),
