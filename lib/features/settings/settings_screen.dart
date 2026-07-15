@@ -19,14 +19,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const List<String> _dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
   bool _loading = true;
   bool _paused = false;
   int _intervalMinutes = SettingsRepository.defaultIntervalMinutes;
-  Set<int> _activeDays = SettingsRepository.defaultActiveDays.toSet();
-  int _startMinutes = SettingsRepository.defaultStartMinutes;
-  int _endMinutes = SettingsRepository.defaultEndMinutes;
   String? _testStatus;
 
   @override
@@ -38,16 +33,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final paused = await widget.settings.isPaused();
     final interval = await widget.settings.intervalMinutes();
-    final days = await widget.settings.activeDays();
-    final start = await widget.settings.startMinutes();
-    final end = await widget.settings.endMinutes();
     if (!mounted) return;
     setState(() {
       _paused = paused;
       _intervalMinutes = interval;
-      _activeDays = days;
-      _startMinutes = start;
-      _endMinutes = end;
       _loading = false;
     });
   }
@@ -73,51 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = (_intervalMinutes + delta).clamp(5, 24 * 60);
     setState(() => _intervalMinutes = next);
     await widget.settings.setIntervalMinutes(next);
-    await _applySchedule();
-  }
-
-  Future<void> _toggleDay(int day) async {
-    final next = Set<int>.from(_activeDays);
-    if (!next.remove(day)) next.add(day);
-    setState(() => _activeDays = next);
-    await widget.settings.setActiveDays(next);
-    await _applySchedule();
-  }
-
-  String _formatMinutes(int minutes) {
-    final hour24 = minutes ~/ 60;
-    final minute = minutes % 60;
-    final period = hour24 < 12 ? 'AM' : 'PM';
-    var hour12 = hour24 % 12;
-    if (hour12 == 0) hour12 = 12;
-    return '$hour12:${minute.toString().padLeft(2, '0')} $period';
-  }
-
-  Future<void> _pickTime({required bool isStart}) async {
-    final current = isStart ? _startMinutes : _endMinutes;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
-    );
-    if (picked == null || !mounted) return;
-    final minutes = picked.hour * 60 + picked.minute;
-
-    final start = isStart ? minutes : _startMinutes;
-    final end = isStart ? _endMinutes : minutes;
-    if (end <= start) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Start time must be before end time')),
-      );
-      return;
-    }
-
-    if (isStart) {
-      setState(() => _startMinutes = minutes);
-      await widget.settings.setStartMinutes(minutes);
-    } else {
-      setState(() => _endMinutes = minutes);
-      await widget.settings.setEndMinutes(minutes);
-    }
     await _applySchedule();
   }
 
@@ -156,54 +100,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       valueLabel: '$_intervalMinutes min',
                       onDecrement: () => _changeInterval(-5),
                       onIncrement: () => _changeInterval(5),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                _SettingsCard(
-                  children: [
-                    const Text('Active days',
-                        style: TextStyle(
-                            fontSize: 14.5, color: AppColors.inkPrimary)),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (var day = 1; day <= 7; day++)
-                          _DayChip(
-                            label: _dayLabels[day - 1],
-                            selected: _activeDays.contains(day),
-                            onTap: () => _toggleDay(day),
-                          ),
-                      ],
-                    ),
-                    if (_activeDays.isEmpty) ...[
-                      const SizedBox(height: 10),
-                      const Text(
-                        "No days selected — reminders won't fire.",
-                        style: TextStyle(
-                            fontSize: 12.5, color: AppColors.inkMuted),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 14),
-                _SettingsCard(
-                  children: [
-                    const Text('Active hours',
-                        style: TextStyle(
-                            fontSize: 14.5, color: AppColors.inkPrimary)),
-                    const SizedBox(height: 8),
-                    _TimeRow(
-                      label: 'Start',
-                      valueLabel: _formatMinutes(_startMinutes),
-                      onTap: () => _pickTime(isStart: true),
-                    ),
-                    const Divider(height: 20, color: AppColors.border),
-                    _TimeRow(
-                      label: 'End',
-                      valueLabel: _formatMinutes(_endMinutes),
-                      onTap: () => _pickTime(isStart: false),
                     ),
                   ],
                 ),
@@ -349,82 +245,3 @@ class _StepButton extends StatelessWidget {
   }
 }
 
-class _DayChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _DayChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? AppColors.accent : AppColors.surface2,
-          shape: BoxShape.circle,
-          border: selected ? null : Border.all(color: AppColors.border),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : AppColors.inkSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimeRow extends StatelessWidget {
-  final String label;
-  final String valueLabel;
-  final VoidCallback onTap;
-
-  const _TimeRow({
-    required this.label,
-    required this.valueLabel,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 14.5, color: AppColors.inkSecondary)),
-            Row(
-              children: [
-                Text(valueLabel,
-                    style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.inkPrimary)),
-                const SizedBox(width: 6),
-                const Icon(Icons.edit_outlined,
-                    size: 16, color: AppColors.inkMuted),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
