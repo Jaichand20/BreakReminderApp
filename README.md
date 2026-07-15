@@ -7,13 +7,15 @@ Press **Start work** on the home screen to anchor the cycle: one interval later 
 - **Take break** opens the app straight into a stopwatch that records the break; the screen stays awake while it's visible. When you're done, tap **End break** — the break (start, end, duration) is logged to a local SQLite database and the next reminder is scheduled exactly one interval after the break ended.
 - **Skip** logs a skipped break without opening the app and restarts the timer — the next reminder lands one interval after the skip.
 
+While a session is running the Start work button becomes **End work**. Pressing it closes the day: all reminders stop and a summary dialog reports when you started and ended, time worked, breaks taken (count and minutes), breaks skipped, and net focus time.
+
 Reminders only fire inside your **active schedule**: pick which weekdays it runs (e.g. only Monday and Wednesday) and a daily time window (e.g. 9:00 AM – 6:00 PM). A reminder that would land outside the window rolls forward to the next active day's window start.
 
 The home screen is a control panel: stat tiles (breaks today, break time today/this week/all-time), a week/month/year trend chart of break minutes, and a GitHub-style year heatmap with streak / best-day / year-total callouts.
 
 ## How scheduling works (design note)
 Because the cycle re-anchors whenever the user acts (Start work, Skip, End break), a single repeating notification can't model it. The app keeps a **chain of one-shot scheduled notifications** (the next ~24 occurrences, computed inside the active window, delivered as exact alarms when permitted):
-- Start work and End break happen in the UI isolate: they cancel the chain and reschedule it anchored at that instant.
+- Start work and End break happen in the UI isolate: they cancel the chain and reschedule it anchored at that instant. End work cancels the chain and clears the anchor, so nothing fires until the next Start work.
 - Skip fires in a headless isolate where the notifications plugin can't reschedule, so it only logs the skip; the app re-anchors at the skip instant the next time it runs. Until then the chain's own cadence (each link one interval after the previous) already approximates it, since the insistent buzz makes the user act within seconds.
 - No reminders are scheduled until Start work has been pressed at least once.
 - The chain is topped back up on app launch when it runs low, so it can't run dry in normal use. Scheduled notifications survive reboots (handled by `flutter_local_notifications`' boot receiver).

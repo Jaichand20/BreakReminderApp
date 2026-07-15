@@ -92,6 +92,16 @@ class BreakRepository {
     return DateTime.tryParse(rows.first.columnAt(0) as String);
   }
 
+  /// How many reminders were skipped today, for the End work day summary.
+  int todaySkipCount() {
+    final row = _db.select(
+      "SELECT COUNT(*) FROM breaks WHERE status = 'skipped' "
+      'AND substr(start_ts, 1, 10) = ?',
+      [_isoDate(DateTime.now())],
+    ).first;
+    return row.columnAt(0) as int;
+  }
+
   static int _toMinutes(int seconds) => (seconds / 60).round();
 
   /// `[count, seconds]` of completed breaks whose start date is in

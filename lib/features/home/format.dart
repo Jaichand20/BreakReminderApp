@@ -14,3 +14,22 @@ String formatClock(DateTime t) {
   if (hour12 == 0) hour12 = 12;
   return '$hour12:${t.minute.toString().padLeft(2, '0')} $period';
 }
+
+const List<String> _weekdays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const List<String> _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// Formats a date as e.g. "Monday, Jul 13".
+String formatDate(DateTime t) =>
+    '${_weekdays[t.weekday - 1]}, ${_months[t.month - 1]} ${t.day}';

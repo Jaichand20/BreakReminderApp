@@ -189,15 +189,15 @@ class NotificationService {
     if (await settings.isPaused()) return;
 
     final anchor = await settings.lastAnchor();
-    final lastSkip = repository.lastSkipTime();
-    if (lastSkip != null && (anchor == null || lastSkip.isAfter(anchor))) {
-      await restartCycle(settings, lastSkip);
+    if (anchor == null) {
+      // Not working (never started, or work was ended) — nothing should be
+      // scheduled, and old skips must not resurrect the cycle.
+      await cancelChain();
       return;
     }
-    if (anchor == null) {
-      // Work has never been started — clear anything stale (e.g. a chain
-      // scheduled by an older version of the app).
-      await cancelChain();
+    final lastSkip = repository.lastSkipTime();
+    if (lastSkip != null && lastSkip.isAfter(anchor)) {
+      await restartCycle(settings, lastSkip);
       return;
     }
     if (await pendingChainCount() < 8) {

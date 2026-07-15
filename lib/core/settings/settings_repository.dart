@@ -13,6 +13,7 @@ class SettingsRepository {
   static const _kEndMinutes = 'window_end_minutes';
   static const _kActiveBreakStart = 'active_break_start';
   static const _kLastAnchor = 'last_anchor';
+  static const _kWorkStartedAt = 'work_started_at';
 
   static const int defaultIntervalMinutes = 60;
   // Mon-Fri, 9:00-18:00 by default.
@@ -105,8 +106,8 @@ class SettingsRepository {
 
   /// The instant the reminder cycle was last anchored at (Start work, break
   /// end, or a reconciled skip) — the next break is one interval after this.
-  /// Null until the user starts work for the first time; no reminders are
-  /// scheduled before then.
+  /// Null while not working (before the first Start work, or after End
+  /// work); no reminders are scheduled then.
   Future<DateTime?> lastAnchor() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_kLastAnchor);
@@ -114,8 +115,30 @@ class SettingsRepository {
     return DateTime.tryParse(stored);
   }
 
-  Future<void> setLastAnchor(DateTime anchor) async {
+  Future<void> setLastAnchor(DateTime? anchor) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kLastAnchor, anchor.toIso8601String());
+    if (anchor == null) {
+      await prefs.remove(_kLastAnchor);
+    } else {
+      await prefs.setString(_kLastAnchor, anchor.toIso8601String());
+    }
+  }
+
+  /// When the current work session began (the Start work press that opened
+  /// it) — used for the End work day summary. Null when not working.
+  Future<DateTime?> workStartedAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_kWorkStartedAt);
+    if (stored == null) return null;
+    return DateTime.tryParse(stored);
+  }
+
+  Future<void> setWorkStartedAt(DateTime? start) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (start == null) {
+      await prefs.remove(_kWorkStartedAt);
+    } else {
+      await prefs.setString(_kWorkStartedAt, start.toIso8601String());
+    }
   }
 }

@@ -34,7 +34,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _breakScreenOpen = false;
   bool _breakInProgress = false;
   bool _startingWork = false;
+  bool _endingWork = false;
   DateTime? _nextBreakAt;
+  DateTime? _workStartedAt;
 
   @override
   void initState() {
@@ -88,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Anchors the hourly cycle at now: the first break reminder buzzes one
-  /// interval after this press.
+  /// interval after this press. Opens a work session if none is running.
   Future<void> _startWork() async {
     if (_startingWork) return;
     setState(() => _startingWork = true);
@@ -97,8 +99,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (await widget.settings.isPaused()) {
         await widget.settings.setPaused(false);
       }
-      await widget.notifications
-          .restartCycle(widget.settings, DateTime.now());
+      final now = DateTime.now();
+      // A second press mid-session only re-anchors the break timer; the
+      // session (and its summary) still starts at the first press.
+      if (await widget.settings.workStartedAt() == null) {
+        await widget.settings.setWorkStartedAt(now);
+      }
+      await widget.notifications.restartCycle(widget.settings, now);
       await _refreshNextBreak();
       if (!mounted) return;
       final next = _nextBreakAt;
@@ -112,8 +119,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// The next chain occurrence that is still in the future, for display.
+  /// Closes the work session: stops all reminders and shows a summary of
+  /// the day (worked time, breaks taken, skips, focus time).
+  Future<void> _endWork() async {
+    if (_endingWork) return;
+    setState(() => _endingWork = true);
+    try {
+      final now = DateTime.now();
+      final workStart = await widget.settings.workStartedAt();
+      // A break still running when work ends is closed and counted.
+      final activeStart = await widget.settings.activeBreakStart();
+      if (activeStart != null) {
+        widget.repository.logBreak(activeStart, now);
+        await widget.settings.setActiveBreakStart(null);
+      }
+      try {
+        await widget.notifications.cancelAllReminders();
+      } catch (e, st) {
+        debugPrint('break_reminder: failed to cancel reminders: $e\n$st');
+      }
+      await widget.settings.setLastAnchor(null);
+      await widget.settings.setWorkStartedAt(null);
+      final stats = widget.repository.stats();
+      final skips = widget.repository.todaySkipCount();
+      if (!mounted) return;
+      setState(() {
+        _refreshTick++;
+        _breakInProgress = false;
+      });
+      await _refreshNextBreak();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _DaySummaryDialog(
+          workStart: workStart,
+          workEnd: now,
+          breaksCount: stats.todayCount,
+          breakMinutes: stats.todayMinutes,
+          skippedCount: skips,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _endingWork = false);
+    }
+  }
+
+  /// The next chain occurrence that is still in the future, plus the open
+  /// work session, for display.
   Future<void> _refreshNextBreak() async {
+    final workStart = await widget.settings.workStartedAt();
     DateTime? next;
     if (!await widget.settings.isPaused()) {
       final anchor = await widget.settings.lastAnchor();
@@ -129,7 +183,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
     if (!mounted) return;
-    if (next != _nextBreakAt) setState(() => _nextBreakAt = next);
+    if (next != _nextBreakAt || workStart != _workStartedAt) {
+      setState(() {
+        _nextBreakAt = next;
+        _workStartedAt = workStart;
+      });
+    }
   }
 
   Future<void> _openBreakScreen() async {
@@ -213,11 +272,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _BreakInProgressBanner(onTap: _openBreakScreen),
               const SizedBox(height: 10),
             ],
+            // One toggle: Start work opens a session, then the same button
+            // becomes End work until the session is closed.
             SizedBox(
               width: double.infinity,
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: _startingWork ? null : _startWork,
+                onPressed: _startingWork || _endingWork
+                    ? null
+                    : (_workStartedAt != null ? _endWork : _startWork),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.accent,
                   foregroundColor: Colors.white,
@@ -226,10 +289,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                label: const Text(
-                  'Start work',
-                  style: TextStyle(
+                icon: Icon(
+                  _workStartedAt != null
+                      ? Icons.stop_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 24,
+                ),
+                label: Text(
+                  _workStartedAt != null ? 'End work' : 'Start work',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.2,
@@ -281,6 +349,120 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DaySummaryDialog extends StatelessWidget {
+  final DateTime? workStart;
+  final DateTime workEnd;
+  final int breaksCount;
+  final int breakMinutes;
+  final int skippedCount;
+
+  const _DaySummaryDialog({
+    required this.workStart,
+    required this.workEnd,
+    required this.breaksCount,
+    required this.breakMinutes,
+    required this.skippedCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final start = workStart;
+    final workedMinutes =
+        start == null ? null : workEnd.difference(start).inMinutes;
+    final focusMinutes = workedMinutes == null
+        ? null
+        : (workedMinutes - breakMinutes).clamp(0, workedMinutes);
+
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Work day summary',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.inkPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            formatDate(workEnd),
+            style: const TextStyle(
+                fontSize: 13, color: AppColors.inkSecondary),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _SummaryRow(
+            label: 'Started work',
+            value: start == null ? '—' : formatClock(start),
+          ),
+          _SummaryRow(label: 'Ended work', value: formatClock(workEnd)),
+          _SummaryRow(
+            label: 'Time worked',
+            value:
+                workedMinutes == null ? '—' : formatMinutes(workedMinutes),
+          ),
+          const Divider(height: 20, color: AppColors.border),
+          _SummaryRow(
+            label: 'Breaks taken',
+            value: breaksCount == 0
+                ? '0'
+                : '$breaksCount (${formatMinutes(breakMinutes)})',
+          ),
+          _SummaryRow(label: 'Breaks skipped', value: '$skippedCount'),
+          _SummaryRow(
+            label: 'Focus time',
+            value: focusMinutes == null ? '—' : formatMinutes(focusMinutes),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(
+            'Done',
+            style: TextStyle(
+                color: AppColors.accent, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.inkSecondary)),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.inkPrimary)),
+        ],
       ),
     );
   }
